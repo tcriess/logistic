@@ -3,34 +3,50 @@
 ; allowed size is actually 160 bytes (32 bytes header + 128 bytes code, which is not quite correct, as the header is only 28 or so bytes)
     text
 screenaddr equ $78000 ; this is for the 512kb version
+
+linea_init equ $a000
+linea_put_pixel equ $a001
+linea_arbitrary_line equ $a003
+linea_horizontal_line equ $a004
+
+
+linea_param_intin equ $08
+linea_param_ptsin equ $0c
+linea_param_colbit0 equ $18
+linea_param_colbit1 equ $1a
+linea_param_colbit2 equ $1c
+linea_param_colbit3 equ $1e
+linea_param_lnmask equ $22
+linea_param_wmode equ $24
+
+linea_param_x1 equ $26
+linea_param_y1 equ $28
+linea_param_x2 equ $2a
+linea_param_y2 equ $2c
+
+
 main:
-    ; clr.l   -(sp)            ; supervisor mode on
-    ; move.w  #$20,-(sp)
-    ; trap    #1
-    ; addq.l  #6,sp
+    ; don't know yet if we will need supervisor mode (would not be required in boot sector!)
+    ;clr.l   -(sp)            ; supervisor mode on
+    ;move.w  #$20,-(sp)
+    ;trap    #1
+    ;addq.l  #6,sp
     ; move.l  d0,sv_ssp
 
-    move.l #screenaddr,a6 ; screen address in a6
+    dc.w linea_init
+    ; a0 and d0 are destroyed and contain the line-a parameter block
+
+    move.l linea_param_intin(a0),a2
+    move.l linea_param_ptsin(a0),a3
+    ; a1 and a2 have the addresses of the intin and ptsin arrays
+
 reset_r:
     move.w #$20c0,d7 ; d7 = r = 2.0234375 (fixed point, bit-shift 12)
-    ; move.w #200,d5 ; line count
-
+    moveq #0,d5 ; current line in d5
 calc_line:
-    ; clear complete screen
-    move.l a6,a5
-    move.w #40*200-1,d4
-clrline:
-    move.l #0,(a5)+
-    dbra d4,clrline
-
-    move.w    #37,-(sp) ; waitvbi
-    trap      #14
-    addq.l    #2,sp
-
-
     move.w #$7f03,d6 ; d6 = x = "sth. <0.5 in fixed point via bit-shift by 16"
-    moveq #100-1,d0 ; compute d0 iterations before drawing
-calc:
+    moveq #128-1,d0 ; compute d0 iterations before drawing
+calc: ; d6 is the current x, d7 is the current r, d0 is the iteration counter, d1 is the temp var to compute the new x
     move.w d6,d1 ; d1 = x
     neg.w d1 ; d1 = 1-x (in fixed point shift by 16)
     mulu.w d6,d1 ; d1 = x*(1-x) fixed point 32 bit shift
@@ -42,114 +58,51 @@ calc:
     lsr.l #4,d1 ; d1.w = r*x*(1-x) fixed point 16 bit shift
     move.w d1,d6 ; d6 = new x
     subq #1,d0
-    bge.s calc
-    
-    ; now we draw the next points until d0 reaches -100
-    cmp.w #-100,d0
-    ble.s next
+    cmp #100,d0
+    bge.s calc ; d>=0 -> continue loop
 
-    lsr.w #8,d1 ; d1 = 0..1 fixed point 8 bit shift (i.e. 0..255)
-    ; move.w d1,d0
-    ; and.w #$000f,d0 ; which pixel
-    and.w #$00f0,d1 ; which 16-pixel-segment
-    lsr.w #1,d1
-    move.l a6,a5
-    move.w #200-1,d5
-fullscr:
-    move.l #$ffffffff,(a5,d1.w)
-    move.l #$ffffffff,4(a5,d1.w)
-    adda.l #160,a5 ; next line
-    dbra d5,fullscr ; 200x, fill from top to bottom
-    bra.s calc
+    ; now we draw the next points until d0 reaches -100
+    tst d0
+    beq.s next
+
+    lsr.w #7,d1 ; d1 = 0..1 fixed point 9 bit shift (i.e. 0..511)
+
+    movem.l d0-d7/a0-a6,-(sp)
+    clr.w linea_param_x1(a0)
+    move.w d5,linea_param_y1(a0)
+    move.w #639,linea_param_x2(a0)
+    move.w d5,linea_param_y2(a0)
+    clr.l linea_param_colbit0(a0)
+    clr.l linea_param_colbit3(a0)
+    move.w #$ffff,linea_param_lnmask(a0)
+    clr.w linea_param_wmode(a0)
+    dc.w linea_arbitrary_line
+    movem.l (sp)+,d0-d7/a0-a6
+
+    movem.l d0-d7/a0-a6,-(sp)
+    move.w d1,linea_param_x1(a0)
+    move.w d5,linea_param_y1(a0)
+    move.w d1,linea_param_x2(a0)
+    move.w #199,linea_param_y2(a0)
+    move.l #$ffffffff,linea_param_colbit0(a0)
+    clr.l linea_param_colbit3(a0)
+    move.w #$ffff,linea_param_lnmask(a0)
+    clr.w linea_param_wmode(a0)
+    dc.w linea_arbitrary_line
+    movem.l (sp)+,d0-d7/a0-a6
+
+;    move.w #7,0(a2) ; color in intin[0]
+;    move.w d1,0(a3) ; x-coordinate in ptsin[0]
+;    move.w d5,2(a3) ; for now: keep y = 0
+
+;    movem.l d0-d7,-(sp)
+;    dc.w linea_put_pixel
+;    movem.l (sp)+,d0-d7
+    bra calc
+
 next:
-    ; next line
-    ; adda.l #160,a5
-    ; subq.w #1,d5
-    ; bge.s calc_line
-    ; move.w    #37,-(sp) ; waitvbi
-    ; trap      #14
-    ; addq.l    #2,sp
+    addq #1,d5
     add.w #$28,d7
     cmp.w #$4000,d7
-    ble.s calc_line
-    bra.s reset_r
-
-    ; move.l a6,a5 ; back to the first line
-
-;; main
-;    ; move.w #$4000,d2 ; d2 = "1 in fixed point via bit-shift by 14"
-;    ; move.w #$ffff,d2 ; d2 ~1 in fp shift 16
-;    move.w #150,d6 ; count lines
-;    move.w #$2000,d7 ; d7 = r = 2 -> start there, go up to 4 (chaotic) (bit-shift 12)
-;    move.l #screenaddr,a6
-;    move.w #$7f03,d5 ; d5 = x = "sth. <0.5 in fixed point via bit-shift by 16"
-;calc0:
-;    move.w    #37,-(sp) ; waitvbi
-;    trap      #14
-;    addq.l    #2,sp
-;calc:
-;    moveq #10,d3
-;    move.w #10,d4
-;calc1:
-;    ; move.w    #37,-(sp) ; waitvbi
-;    ; trap      #14
-;    ; addq.l    #2,sp
-;    ; move.w d2,d1 ; d1 = one
-;    ; sub.w d0,d1 ; d1 = 1-x
-;    move.w d5,d1
-;    neg.w d1     ; this should end up being 1-x in the 16-bit-shift (excluding 0 and 1)
-;    mulu.w d5,d1 ; d1 = x*(1-x)
-;    clr.w d1 ; clear lower word, which will end up in the high word after the following swap
-;    swap d1 ; fix the bit-shift to be 16 again
-;    ; lsr.l #8,d1
-;    ; lsr.l #8,d1 ; fix the bit-shift to be 16 again
-;    ; lsr.l #4,d1
-;    mulu.w d7,d1 ; d1 = r*x*(1-x) 0<=d1<=1 (in fixed point, i.e. 0<=d1<=$4000=16384)
-;    lsr.l #4,d1
-;    lsr.l #8,d1 ; make bit-shift 16 again
-;    ; divide by 16 to find the number of words
-;    ; and.l #$00003FFF,d1
-;    move.w d1,d5 ; d5 = x
-;    dbra d4,calc1
-;
-;    lsr.w #8,d1
-;    lsr.w #4,d1 ; shift by 12 bits, i.e. we have values 0..15 in d1 now
-;    ; move.w    #37,-(sp) ; waitvbi
-;    ; trap      #14
-;    ; addq.l    #2,sp
-;    ; move.l a6,a1
-;    lsl.w #3,d1 ; *8
-;    move.l #$ffffffff,0(a6,d1.w)
-;    moveq #0,d4
-;    dbra d3,calc1
-;    ; moveq #10,d3
-;; drawcls:
-;    ; move.l #0,(a1)+
-;    ; move.l #0,(a1)+
-;    ; dbra d3,drawcls ; clear background
-;    ; move.l a6,a1
-;; draw:
-;    ; move.l #$ffffffff,(a1)+ ; plane 0+1
-;    ; move.l #$ffffffff,(a1)+ ; plane 2+3
-;    ; dbra d1,draw ; mark as many as in d1
-;    adda.l #160,a6 ; next line
-;    add.w #$0005,d7 ; add a bit to r
-;    cmp.w #$4000,d7
-;    subq #1,d6
-;    bne.s calc
-;    ; move.w    #37,-(sp) ; waitvbi
-;    ; trap      #14
-;    ; addq.l    #2,sp
-;    ; move.l #screenaddr,a6
-;    ; move.w #150,d6
-;    move.l #screenaddr,a6
-;    cmp.w #$4000,d7
-;    ble.s calc0
-;    move.l #screenaddr,a6
-;    move.l a6,a1
-;    move.w #8000,d7
-;clrscr:
-;    clr.l (a1)+
-;    dbra d7,clrscr
-;    move.w #$2000,d7
-;    bra.s calc0
+    ble calc_line
+    bra reset_r
