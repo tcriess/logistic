@@ -1,0 +1,4 @@
+Title: The logistic road to chaos
+Author: tecer
+Compo: ST/E 128B Intro
+Machine: 520 ST
