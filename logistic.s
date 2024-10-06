@@ -107,9 +107,9 @@ calc: ; d6 is the current x, d7 is the current r, d0 is the iteration counter, d
 
     move.w #7,0(a2) ; color in intin[0]
     move.w d1,0(a3) ; x-coordinate in ptsin[0]
-    move.w d5,2(a3) ; for now: keep y = 0
+    move.w d5,2(a3) ; y-coordinate in ptsin[1]
 
-    movem.l d0-d7,-(sp)
+    movem.l d0-d7,-(sp) ; probably not required to save *everything*, but i could not find documentation about what registered are destroyed in the line a routine (some certainly are!)
     dc.w linea_put_pixel
     movem.l (sp)+,d0-d7
     bra.s calc
