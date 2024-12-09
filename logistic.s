@@ -1,37 +1,15 @@
-; logistic.
+; the logistic road to chaos.
+; see https://en.wikipedia.org/wiki/Logistic_map
 ; 128B Atari ST intro for SillyVenture 2024 WE
 ; allowed size is actually 160 bytes (32 bytes header + 128 bytes code, which is not quite correct, as the header is only 28 or so bytes)
     text
-screenaddr equ $78000 ; this is for the 512kb version
-
 linea_init equ $a000
 linea_put_pixel equ $a001
-linea_arbitrary_line equ $a003
-linea_horizontal_line equ $a004
 linea_hide_mouse equ $a00a
-
 linea_param_intin equ $08
 linea_param_ptsin equ $0c
-linea_param_colbit0 equ $18
-linea_param_colbit1 equ $1a
-linea_param_colbit2 equ $1c
-linea_param_colbit3 equ $1e
-linea_param_lnmask equ $22
-linea_param_wmode equ $24
-
-linea_param_x1 equ $26
-linea_param_y1 equ $28
-linea_param_x2 equ $2a
-linea_param_y2 equ $2c
 
 main:
-    ; don't know yet if we will need supervisor mode (would not be required in boot sector!)
-    ;clr.l   -(sp)            ; supervisor mode on
-    ;move.w  #$20,-(sp)
-    ;trap    #1
-    ;addq.l  #6,sp
-    ; move.l  d0,sv_ssp
-
     ; hide cursor
     clr.l -(sp)
     move.w #$15,-(sp)
@@ -81,35 +59,11 @@ calc: ; d6 is the current x, d7 is the current r, d0 is the iteration counter, d
     lsr.w #7,d1 ; d1 = 0..1 fixed point 9 bit shift (i.e. 0..511)
     add.w #60,d1 ; slightly shift to the right
 
-    ;movem.l d0-d7/a0-a6,-(sp)
-    ;clr.w linea_param_x1(a0)
-    ;move.w d5,linea_param_y1(a0)
-    ;move.w #639,linea_param_x2(a0)
-    ;move.w d5,linea_param_y2(a0)
-    ;clr.l linea_param_colbit0(a0)
-    ;clr.l linea_param_colbit3(a0)
-    ;move.w #$ffff,linea_param_lnmask(a0)
-    ;clr.w linea_param_wmode(a0)
-    ;dc.w linea_arbitrary_line
-    ;movem.l (sp)+,d0-d7/a0-a6
-
-    ;movem.l d0-d7/a0-a6,-(sp)
-    ;move.w d1,linea_param_x1(a0)
-    ;move.w d5,linea_param_y1(a0)
-    ;move.w d1,linea_param_x2(a0)
-    ;move.w #199,linea_param_y2(a0)
-    ;move.l #$ffffffff,linea_param_colbit0(a0)
-    ;clr.l linea_param_colbit3(a0)
-    ;move.w #$ffff,linea_param_lnmask(a0)
-    ;clr.w linea_param_wmode(a0)
-    ;dc.w linea_arbitrary_line
-    ;movem.l (sp)+,d0-d7/a0-a6
-
     move.w #7,0(a2) ; color in intin[0]
     move.w d1,0(a3) ; x-coordinate in ptsin[0]
     move.w d5,2(a3) ; y-coordinate in ptsin[1]
 
-    movem.l d0-d7,-(sp) ; probably not required to save *everything*, but i could not find documentation about what registered are destroyed in the line a routine (some certainly are!)
+    movem.l d0-d7,-(sp) ; it is probably not required to save *everything*, there is probably documentation somewhere about what registered are destroyed in the line a routine
     dc.w linea_put_pixel
     movem.l (sp)+,d0-d7
     bra.s calc
